@@ -5,7 +5,6 @@ import io
 import re
 from dataclasses import dataclass
 
-import openai
 import requests
 from PIL import Image
 
@@ -21,10 +20,11 @@ class GenerationSettings:
 
 class PhotoMakerService:
     def __init__(self) -> None:
-        self._client = openai.OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=settings.openrouter_api_key,
-        )
+        self._session = requests.Session()
+        self._session.headers.update({
+            "Authorization": f"Bearer {settings.openrouter_api_key}",
+            "Content-Type": "application/json",
+        })
 
     @staticmethod
     def _image_to_data_url(img: Image.Image) -> str:
@@ -49,27 +49,52 @@ class PhotoMakerService:
             })
         content_parts.append({"type": "text", "text": options.prompt})
 
+        payload = {
+            "model": settings.openrouter_model,
+            "messages": [{"role": "user", "content": content_parts}],
+            "max_tokens": 1024,
+        }
+
         # Retry up to 3 times for probabilistic content policy rejections
+        last_error = ""
         for attempt in range(3):
-            try:
-                response = self._client.chat.completions.create(
-                    model=settings.openrouter_model,
-                    messages=[{"role": "user", "content": content_parts}],
-                    max_tokens=1024,
-                    extra_body={"modalities": ["text", "image"]},
-                )
-                return self._extract_image(response.choices[0].message.content)
-            except openai.AuthenticationError:
+            response = self._session.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                json=payload,
+                timeout=180,
+            )
+
+            if response.status_code == 200:
+                break
+
+            body = response.text[:500]
+            if response.status_code in (401, 403) or "API key" in body:
                 raise RuntimeError(
-                    "Invalid API key. Set OPENROUTER_API_KEY in .env"
+                    "API key is invalid or expired. "
+                    "Check OPENROUTER_API_KEY in your Cloud Run env vars."
                 )
-            except openai.BadRequestError:
-                if attempt < 2:
-                    continue
-                raise RuntimeError(
-                    "Content policy blocked after 3 attempts. "
-                    "Try a different mode or different photos."
-                )
+
+            policy_keywords = ["policy", "violat", "违反", "政策", "invalid_request"]
+            if response.status_code == 500 and any(k in body.lower() for k in policy_keywords):
+                last_error = body
+                continue
+
+            raise RuntimeError(f"API returned {response.status_code}: {body}")
+        else:
+            raise RuntimeError(
+                f"Content policy blocked after 3 attempts. "
+                "Try a different mode or different photos."
+            )
+
+        result = response.json()
+
+        if "choices" not in result or not result["choices"]:
+            raise RuntimeError("API returned no choices.")
+
+        message = result["choices"][0].get("message", {})
+        content = message.get("content", "")
+
+        return self._extract_image(content)
 
     def _extract_image(self, content) -> Image.Image:
         if isinstance(content, list):
@@ -102,6 +127,6 @@ class PhotoMakerService:
         if url.startswith("data:"):
             _, encoded = url.split(",", 1)
             return Image.open(io.BytesIO(base64.b64decode(encoded))).convert("RGB")
-        resp = requests.get(url, timeout=60)
+        resp = self._session.get(url, timeout=60)
         resp.raise_for_status()
         return Image.open(io.BytesIO(resp.content)).convert("RGB")
