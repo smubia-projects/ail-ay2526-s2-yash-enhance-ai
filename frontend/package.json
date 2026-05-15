@@ -1,0 +1,9 @@
+{
+  "name": "cute-fusion-lab-frontend",
+  "version": "1.0.0",
+  "description": "Frontend for Cute Fusion Lab",
+  "scripts": {
+    "build": "node ./build.js",
+    "dev": "echo 'Start a local server pointing to http://localhost:8001'"
+  }
+}
