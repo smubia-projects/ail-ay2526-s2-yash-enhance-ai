@@ -5,5 +5,8 @@
   "scripts": {
     "build": "node ./build.js",
     "dev": "echo 'Start a local server pointing to http://localhost:8001'"
+  },
+  "dependencies": {
+    "@vercel/analytics": "^2.0.1"
   }
 }

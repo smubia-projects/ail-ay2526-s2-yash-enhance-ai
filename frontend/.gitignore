@@ -1,4 +1,5 @@
 node_modules/
 config.js
+analytics-module.js
 .env.local
 .env
