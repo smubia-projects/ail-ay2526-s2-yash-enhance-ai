@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -8,7 +9,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 class Settings(BaseSettings):
     app_name: str = "Cute Fusion Lab API"
-    output_dir: Path = BACKEND_ROOT / "generated"
+    output_dir: Path = Path(os.getenv("OUTPUT_DIR", str(BACKEND_ROOT / "generated")))
 
     # API provider (apiyi.com)
     aimlapi_key: str = ""
@@ -20,18 +21,7 @@ class Settings(BaseSettings):
     # Telegram
     telegram_bot_token: str = ""
 
-    cors_origins: str = (
-        "http://127.0.0.1:5173,"
-        "http://localhost:5173,"
-        "http://127.0.0.1:5500,"
-        "http://localhost:5500,"
-        "http://127.0.0.1:8001,"
-        "http://localhost:8001,"
-        "http://127.0.0.1:8080,"
-        "http://localhost:8080,"
-        "http://127.0.0.1:3000,"
-        "http://localhost:3000"
-    )
+    cors_origins: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
