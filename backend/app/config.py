@@ -17,6 +17,24 @@ class Settings(BaseSettings):
 
     target_image_size: int = 384
 
+    # Rate limiting (per IP, per project) — fallback when central config is absent
+    rate_limit_generate_max: int = 5
+    rate_limit_window_seconds: int = 5 * 24 * 60 * 60  # 5 days
+    upstash_redis_rest_url: str = ""
+    upstash_redis_rest_token: str = ""
+    upstash_redis_url: str = ""
+    upstash_redis_token: str = ""
+
+    @property
+    def redis_url(self) -> str:
+        """Accept both Upstash-default (REST_) and short env var names."""
+        return self.upstash_redis_rest_url or self.upstash_redis_url
+
+    @property
+    def redis_token(self) -> str:
+        """Accept both Upstash-default (REST_) and short env var names."""
+        return self.upstash_redis_rest_token or self.upstash_redis_token
+
     # Telegram
     telegram_bot_token: str = ""
 

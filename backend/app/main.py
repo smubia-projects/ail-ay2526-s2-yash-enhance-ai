@@ -6,7 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import requests
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -17,6 +17,7 @@ from app.image_utils import load_image_from_bytes, preprocess_reference_image
 from app.photomaker_service import GenerationError, GenerationSettings, PhotoMakerService
 from app.presets import PRESETS
 from app.prompt_builder import build_prompts
+from app.rate_limit import check_rate_limit
 from app.telegram_bot import TelegramBotPoller
 
 logger = logging.getLogger(__name__)
@@ -103,6 +104,7 @@ async def _read_and_prepare(file: UploadFile) -> "Image.Image":
 
 @app.post("/api/generate", response_model=GenerateResponse)
 async def generate(
+    request: Request,
     person_a: UploadFile = File(...),
     person_b: UploadFile | None = File(None),
     mode: str = Form("kid"),
@@ -117,6 +119,8 @@ async def generate(
     jawline: str = Form(""),
     seed: int | None = Form(None),
 ) -> GenerateResponse:
+    check_rate_limit(request, "gen")
+
     preset = PRESETS.get(mode)
     if preset is None:
         raise HTTPException(status_code=400, detail=f"Unknown mode '{mode}'.")

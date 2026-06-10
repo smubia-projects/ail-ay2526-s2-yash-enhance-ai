@@ -4,3 +4,4 @@ python-multipart==0.0.20
 pillow==11.3.0
 pydantic-settings==2.11.0
 requests==2.32.3
+upstash-redis==1.1.0

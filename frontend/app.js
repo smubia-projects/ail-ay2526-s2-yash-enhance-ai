@@ -65,6 +65,21 @@ let lastMode = null;
 let lastTab = null;
 let lastFilename = null;
 
+// ---- Rate limit modal ----
+const rlOverlay  = document.getElementById("rlOverlay");
+const rlDismiss  = document.getElementById("rlDismiss");
+const rlCount    = document.getElementById("rlCount");
+
+function showRateLimitModal(count) {
+  rlCount.textContent = count;
+  rlOverlay.classList.add("open");
+}
+function hideRateLimitModal() {
+  rlOverlay.classList.remove("open");
+}
+rlDismiss.addEventListener("click", hideRateLimitModal);
+rlOverlay.addEventListener("click", (e) => { if (e.target === rlOverlay) hideRateLimitModal(); });
+
 // ---- Toggle groups (gender + hair per tab) ----
 const toggleState = {
   combineAge: "kid",
@@ -209,6 +224,21 @@ async function callGenerate(mode, btn, tab) {
     form.append("mode", mode);
 
     const resp = await fetch(`${API_BASE}/api/generate`, { method: "POST", body: form });
+    if (resp.status === 429) {
+      const body = await resp.json().catch(() => ({}));
+      const count = body.detail?.queries_used ?? "a few";
+      showRateLimitModal(count);
+      setStatus("Rate limit reached.", "error");
+      return;
+    }
+    // 503 = demo paused via the central kill switch. Distinct from the 429 CTA —
+    // a paused demo is an operator action, not the user hitting a limit.
+    if (resp.status === 503) {
+      const body = await resp.json().catch(() => ({}));
+      const msg = body.detail?.message || "This demo is temporarily paused. Check back soon.";
+      setStatus("⏸️ " + msg, "error");
+      return;
+    }
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({ detail: resp.statusText }));
       throw new Error(err.detail || `Error ${resp.status}`);
