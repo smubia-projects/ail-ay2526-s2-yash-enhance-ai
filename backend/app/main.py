@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import secrets
 from pathlib import Path
 from uuid import uuid4
@@ -13,10 +14,12 @@ from pydantic import BaseModel
 
 from app.config import settings
 from app.image_utils import load_image_from_bytes, preprocess_reference_image
-from app.photomaker_service import GenerationSettings, PhotoMakerService
+from app.photomaker_service import GenerationError, GenerationSettings, PhotoMakerService
 from app.presets import PRESETS
 from app.prompt_builder import build_prompts
 from app.telegram_bot import TelegramBotPoller
+
+logger = logging.getLogger(__name__)
 
 
 class PresetResponse(BaseModel):
@@ -151,10 +154,13 @@ async def generate(
 
     try:
         result_image = await run_in_threadpool(service.generate, id_images, options)
+    except GenerationError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     except Exception as exc:
+        logger.exception("Unexpected generation error")
         raise HTTPException(
             status_code=500,
-            detail=f"Generation failed: {exc}",
+            detail="Something went wrong on our end. Please try again.",
         ) from exc
 
     filename = f"{uuid4().hex}.png"
