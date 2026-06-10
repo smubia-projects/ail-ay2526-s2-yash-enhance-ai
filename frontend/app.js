@@ -4,7 +4,7 @@
    Visual-only selections: gender, hair length, effect cards.
    ================================================================ */
 
-const API_BASE = "http://localhost:8001";
+const API_BASE = window.VITE_API_BASE || (window.location.hostname === 'localhost' ? 'http://localhost:8001' : '/api');
 
 // ---- DOM (Combine tab) ----
 const personAInput = document.getElementById("personA");
