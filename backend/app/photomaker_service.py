@@ -25,7 +25,7 @@ class PhotoMakerService:
     def __init__(self) -> None:
         self._session = requests.Session()
         self._session.headers.update({
-            "Authorization": f"Bearer {settings.openrouter_api_key}",
+            "Authorization": f"Bearer {settings.api_key}",
             "Content-Type": "application/json",
         })
 
@@ -41,7 +41,7 @@ class PhotoMakerService:
         id_images: list[Image.Image],
         options: GenerationSettings,
     ) -> Image.Image:
-        if not settings.openrouter_api_key:
+        if not settings.api_key:
             raise RuntimeError("API key not configured.")
 
         content_parts: list[dict] = []
@@ -53,7 +53,7 @@ class PhotoMakerService:
         content_parts.append({"type": "text", "text": options.prompt})
 
         payload = {
-            "model": settings.openrouter_model,
+            "model": settings.image_model_name,
             "messages": [{"role": "user", "content": content_parts}],
             "modalities": ["image", "text"],
             "max_tokens": 1024,
@@ -61,7 +61,7 @@ class PhotoMakerService:
 
         for attempt in range(3):
             response = self._session.post(
-                "https://openrouter.ai/api/v1/chat/completions",
+                f"{settings.api_base_url}/chat/completions",
                 json=payload,
                 timeout=180,
             )
@@ -92,10 +92,24 @@ class PhotoMakerService:
 
     def _extract_image(self, message: dict) -> Image.Image | None:
         images = message.get("images") or []
+        url = ""
         if images:
             url = images[0].get("image_url", {}).get("url", "")
-            if url:
+        
+        if not url:
+            import re
+            content = message.get("content") or ""
+            match = re.search(r"!\[.*?\]\((.*?)\)", content)
+            if match:
+                url = match.group(1)
+
+        if url:
+            if url.startswith("data:"):
                 return self._decode_data_uri(url)
+            else:
+                resp = requests.get(url, timeout=30)
+                resp.raise_for_status()
+                return Image.open(io.BytesIO(resp.content)).convert("RGB")
         return None
 
     @staticmethod

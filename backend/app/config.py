@@ -11,9 +11,10 @@ class Settings(BaseSettings):
     app_name: str = "Cute Fusion Lab API"
     output_dir: Path = Path(os.getenv("OUTPUT_DIR", str(BACKEND_ROOT / "generated")))
 
-    # OpenRouter inference
-    openrouter_api_key: str = ""
-    openrouter_model: str = "google/gemini-2.5-flash-image"
+    # AI API configuration
+    api_key: str = ""
+    image_model_name: str = "google/gemini-2.5-flash-image"
+    api_base_url: str = "https://openrouter.ai/api/v1"
 
     target_image_size: int = 384
 
