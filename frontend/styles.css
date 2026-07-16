@@ -285,8 +285,8 @@ body{
 .share-heading{
   font-family:"Space Grotesk",sans-serif;font-size:1.35rem;font-weight:700;
   background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  margin-bottom:18px;
 }
-.share-subtitle{font-size:.85rem;color:var(--text-dim);margin:6px 0 18px}
 
 .share-preview{
   position:relative;border-radius:var(--r-sm);overflow:hidden;

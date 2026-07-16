@@ -458,29 +458,83 @@ function drawHeadline(ctx, W, lines, startY) {
   }
 }
 
-function drawCTA(ctx, W, y) {
-  const label = "Generate yours free  →";
-  ctx.font = "700 34px 'Space Grotesk', sans-serif";
-  const tw = ctx.measureText(label).width;
-  const pad = 46;
-  const pw = tw + pad * 2;
-  const ph = 84;
-  const px = (W - pw) / 2;
-  ctx.save();
-  ctx.shadowColor = "rgba(34,197,94,.5)";
-  ctx.shadowBlur = 44;
-  roundRectPath(ctx, px, y, pw, ph, ph / 2);
-  const grad = ctx.createLinearGradient(px, 0, px + pw, 0);
-  grad.addColorStop(0, "#22c55e");
-  grad.addColorStop(1, "#10b981");
-  ctx.fillStyle = grad;
+// The two scannable calls-to-action baked into every card.
+const QR_TARGETS = [
+  { url: "https://smubia.com", label: "smubia.com" },
+  { url: "https://ail-ay2526-s2-yash-enhance-ai.vercel.app/", label: "Make your own" },
+];
+
+// Render a QR code to an offscreen canvas via qrcodejs. It's drawn
+// same-origin, so it never taints the exported share canvas. Resolves
+// null if the library didn't load, so the card can fall back to a URL.
+function makeQR(text, size) {
+  return new Promise((resolve) => {
+    if (typeof QRCode === "undefined") { resolve(null); return; }
+    try {
+      const holder = document.createElement("div");
+      new QRCode(holder, {
+        text,
+        width: size,
+        height: size,
+        colorDark: "#080808",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.M,
+      });
+      const canvas = holder.querySelector("canvas");
+      if (canvas) { resolve(canvas); return; }
+      const img = holder.querySelector("img");
+      if (img && img.complete && img.naturalWidth) { resolve(img); return; }
+      if (img) { img.onload = () => resolve(img); img.onerror = () => resolve(null); return; }
+      resolve(null);
+    } catch { resolve(null); }
+  });
+}
+
+// White quiet-zone panel + QR (or URL fallback) + caption below.
+function drawQRPanel(ctx, source, target, cx, y, size) {
+  const pad = 14;
+  const box = size + pad * 2;
+  const x = cx - box / 2;
+  roundRectPath(ctx, x, y, box, box, 20);
+  ctx.fillStyle = "#ffffff";
   ctx.fill();
-  ctx.restore();
-  ctx.fillStyle = "#04120a";
+  if (source) {
+    ctx.drawImage(source, cx - size / 2, y + pad, size, size);
+  } else {
+    ctx.fillStyle = "#080808";
+    ctx.font = "600 18px 'Inter', sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(target.url.replace(/^https?:\/\//, "").replace(/\/$/, ""), cx, y + box / 2);
+    ctx.textBaseline = "alphabetic";
+  }
+  ctx.font = "700 24px 'Inter', sans-serif";
+  ctx.fillStyle = "#e8e8e8";
   ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(label, W / 2, y + ph / 2 + 2);
   ctx.textBaseline = "alphabetic";
+  ctx.fillText(target.label, cx, y + box + 34);
+}
+
+// A centered row of the two QR panels, with an optional green heading above.
+async function drawQRRow(ctx, W, y, size, heading) {
+  if (heading) {
+    ctx.font = "600 26px 'Inter', sans-serif";
+    ctx.fillStyle = "#4ade80";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(heading, W / 2, y - 22);
+  }
+  const box = size + 28;
+  const gap = 64;
+  const totalW = box * 2 + gap;
+  const leftCx = (W - totalW) / 2 + box / 2;
+  const rightCx = leftCx + box + gap;
+  const [q0, q1] = await Promise.all([
+    makeQR(QR_TARGETS[0].url, size),
+    makeQR(QR_TARGETS[1].url, size),
+  ]);
+  drawQRPanel(ctx, q0, QR_TARGETS[0], leftCx, y, size);
+  drawQRPanel(ctx, q1, QR_TARGETS[1], rightCx, y, size);
 }
 
 // Load the web fonts before painting so canvas text isn't drawn in a fallback.
@@ -499,7 +553,7 @@ async function ensureFonts() {
 }
 
 async function buildCombineCard() {
-  const W = 1080, H = 1400;
+  const W = 1080, H = 1500;
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
@@ -514,11 +568,11 @@ async function buildCombineCard() {
   ]);
 
   // Parents row
-  const pS = 300, gap = 120;
+  const pS = 285, gap = 120;
   const rowW = pS * 2 + gap;
   const ax = (W - rowW) / 2;
   const bx = ax + pS + gap;
-  const py = 172;
+  const py = 150;
   drawCover(ctx, imgA, ax, py, pS, pS, 28);
   drawCover(ctx, imgB, bx, py, pS, pS, 28);
   drawPillLabel(ctx, "Parent A", ax + pS / 2, py + pS + 12);
@@ -532,27 +586,27 @@ async function buildCombineCard() {
   ctx.textBaseline = "alphabetic";
 
   // Result
-  const rS = 460;
+  const rS = 420;
   const rx = (W - rS) / 2;
-  const ry = 588;
+  const ry = 525;
   ctx.fillStyle = "rgba(255,255,255,.55)";
-  ctx.font = "700 40px 'Space Grotesk', sans-serif";
+  ctx.font = "700 38px 'Space Grotesk', sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("↓", W / 2, ry - 20);
+  ctx.fillText("↓", W / 2, ry - 18);
   drawCover(ctx, imgR, rx, ry, rS, rS, 36);
   drawPillLabel(ctx, "👶 Their future kid", W / 2, ry + rS + 14);
 
   drawHeadline(ctx, W, [
     { text: "Want to see what", strong: false, gap: 60 },
     { text: "YOUR future kid looks like?", strong: true, gap: 0 },
-  ], 1180);
-  drawCTA(ctx, W, 1258);
+  ], 1085);
+  await drawQRRow(ctx, W, 1240, 170, "Scan to make your own →");
 
   return canvas;
 }
 
 async function buildEffectsCard() {
-  const W = 1080, H = 1200;
+  const W = 1080, H = 1320;
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
@@ -566,11 +620,11 @@ async function buildEffectsCard() {
   ]);
 
   // Before / after
-  const s = 420, gap = 64;
+  const s = 400, gap = 64;
   const rowW = s * 2 + gap;
   const ax = (W - rowW) / 2;
   const bx = ax + s + gap;
-  const y = 288;
+  const y = 272;
   drawPillLabel(ctx, "Before", ax + s / 2, y - 56);
   drawPillLabel(ctx, "After", bx + s / 2, y - 56);
   drawCover(ctx, imgO, ax, y, s, s, 32);
@@ -586,8 +640,8 @@ async function buildEffectsCard() {
   drawHeadline(ctx, W, [
     { text: "Want your own", strong: false, gap: 60 },
     { text: "AI transformation?", strong: true, gap: 0 },
-  ], 880);
-  drawCTA(ctx, W, 958);
+  ], 838);
+  await drawQRRow(ctx, W, 1000, 168, "Scan to try it yourself →");
 
   return canvas;
 }
