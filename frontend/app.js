@@ -34,15 +34,18 @@ const downloadLink  = document.getElementById("downloadLink");
 const resultBtns    = document.getElementById("resultBtns");
 const resultSub     = document.getElementById("resultSub");
 
-// ---- DOM (telegram QR) ----
-const tgSend        = document.getElementById("tgSend");
-const tgQrBtn       = document.getElementById("tgQrBtn");
-const tgHint        = document.getElementById("tgHint");
-const qrModal       = document.getElementById("qrModal");
-const qrCanvas      = document.getElementById("qrCanvas");
-const qrClose       = document.getElementById("qrClose");
-const qrBotName     = document.getElementById("qrBotName");
-let botUsername      = null;
+// ---- DOM (share card) ----
+const shareBtn       = document.getElementById("shareBtn");
+const shareModal     = document.getElementById("shareModal");
+const shareClose     = document.getElementById("shareClose");
+const sharePreview   = document.getElementById("sharePreview");
+const shareImage     = document.getElementById("shareImage");
+const shareNativeBtn = document.getElementById("shareNativeBtn");
+const shareDownload  = document.getElementById("shareDownload");
+const shareCopy      = document.getElementById("shareCopy");
+const shareHint      = document.getElementById("shareHint");
+let shareBlob      = null;
+let shareObjectUrl = null;
 
 // ---- Effects data ----
 const EFFECTS = [
@@ -63,7 +66,6 @@ let selectedEffect = null;
 let backendOk = null;
 let lastMode = null;
 let lastTab = null;
-let lastFilename = null;
 
 // ---- Rate limit modal ----
 const rlOverlay  = document.getElementById("rlOverlay");
@@ -245,7 +247,6 @@ async function callGenerate(mode, btn, tab) {
     }
     const data = await resp.json();
     const url = data.image_url.startsWith("http") ? data.image_url : `${API_BASE}${data.image_url}`;
-    lastFilename = data.filename;
     showResult(url, data.mode);
     setStatus(`Done! Mode: ${data.mode}`, "info");
   } catch (err) {
@@ -262,9 +263,6 @@ function showResult(src, mode) {
   resultFrame.classList.add("has-image");
   downloadLink.href = src;
   resultBtns.classList.add("visible");
-  tgSend.classList.add("visible");
-  tgHint.textContent = "Recipient must message your bot first";
-  tgHint.className = "tg-hint";
   resultSub.textContent = `AI fusion \u2014 ${mode}`;
   document.getElementById("resultSection").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
@@ -348,60 +346,330 @@ combineBtn.addEventListener("click", () => {
 generateBtn.addEventListener("click", () => { if (selectedEffect) callGenerate(selectedEffect, generateBtn, "effects"); });
 regenerateBtn.addEventListener("click", () => { if (lastMode && lastTab) callGenerate(lastMode, regenerateBtn, lastTab); });
 
-// ---- Telegram QR ----
-async function fetchBotInfo() {
-  if (botUsername) return botUsername;
-  try {
-    const resp = await fetch(`${API_BASE}/api/telegram-bot`);
-    const data = await resp.json();
-    if (data.username) { botUsername = data.username; return botUsername; }
-  } catch (e) {
-    console.error("Failed to fetch bot info:", e);
-  }
-  return null;
+// ================================================================
+//  SHARE CARD
+//  Builds a branded, ready-to-post PNG entirely on a <canvas>: the
+//  original input photo(s) + result + a baked-in "make your own"
+//  invite. No backend, no upload — everything stays in the browser.
+// ================================================================
+const BRAND = "CUTE FUSION LAB";
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    // Keep the canvas untainted so we can export it. The result image is
+    // served with CORS headers; parent previews are same-origin blob: URLs.
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("An image failed to load"));
+    img.src = src;
+  });
 }
 
-tgQrBtn.addEventListener("click", async () => {
-  console.log("QR button clicked, lastFilename:", lastFilename);
-  if (!lastFilename) {
-    tgHint.textContent = "Generate an image first";
-    tgHint.className = "tg-hint error";
-    return;
+function roundRectPath(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
+// Draw an image cropped to "cover" a rounded box, with a green frame.
+function drawCover(ctx, img, x, y, w, h, r) {
+  ctx.save();
+  roundRectPath(ctx, x, y, w, h, r);
+  ctx.clip();
+  const scale = Math.max(w / img.width, h / img.height);
+  const dw = img.width * scale;
+  const dh = img.height * scale;
+  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+  ctx.restore();
+  ctx.save();
+  roundRectPath(ctx, x, y, w, h, r);
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = "rgba(34,197,94,.55)";
+  ctx.stroke();
+  ctx.restore();
+}
+
+function greenGradient(ctx, x0, x1) {
+  const g = ctx.createLinearGradient(x0, 0, x1, 0);
+  g.addColorStop(0, "#22c55e");
+  g.addColorStop(1, "#4ade80");
+  return g;
+}
+
+function paintBackground(ctx, W, H) {
+  ctx.fillStyle = "#080808";
+  ctx.fillRect(0, 0, W, H);
+  const g1 = ctx.createRadialGradient(W * 0.15, H * 0.08, 0, W * 0.15, H * 0.08, W * 0.75);
+  g1.addColorStop(0, "rgba(34,197,94,.22)");
+  g1.addColorStop(1, "rgba(34,197,94,0)");
+  ctx.fillStyle = g1;
+  ctx.fillRect(0, 0, W, H);
+  const g2 = ctx.createRadialGradient(W * 0.9, H * 0.96, 0, W * 0.9, H * 0.96, W * 0.75);
+  g2.addColorStop(0, "rgba(16,185,129,.18)");
+  g2.addColorStop(1, "rgba(16,185,129,0)");
+  ctx.fillStyle = g2;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawBrand(ctx, W) {
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.font = "700 34px 'Space Grotesk', sans-serif";
+  ctx.fillStyle = greenGradient(ctx, W * 0.2, W * 0.8);
+  ctx.fillText(BRAND, W / 2, 90);
+  ctx.font = "600 20px 'Inter', sans-serif";
+  ctx.fillStyle = "rgba(255,255,255,.45)";
+  ctx.fillText("AI FACE FUSION", W / 2, 122);
+}
+
+function drawPillLabel(ctx, text, cx, y) {
+  ctx.font = "700 22px 'Inter', sans-serif";
+  const tw = ctx.measureText(text).width;
+  const pad = 18;
+  const h = 42;
+  const w = tw + pad * 2;
+  roundRectPath(ctx, cx - w / 2, y, w, h, h / 2);
+  ctx.fillStyle = "rgba(34,197,94,.16)";
+  ctx.fill();
+  ctx.fillStyle = "#4ade80";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, cx, y + h / 2 + 1);
+  ctx.textBaseline = "alphabetic";
+}
+
+function drawHeadline(ctx, W, lines, startY) {
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  let y = startY;
+  for (const ln of lines) {
+    ctx.font = ln.strong
+      ? "700 50px 'Space Grotesk', sans-serif"
+      : "500 40px 'Inter', sans-serif";
+    ctx.fillStyle = ln.strong ? greenGradient(ctx, W * 0.12, W * 0.88) : "#e8e8e8";
+    ctx.fillText(ln.text, W / 2, y);
+    y += ln.gap;
   }
+}
 
-  const bot = await fetchBotInfo();
-  console.log("Bot username:", bot);
-  if (!bot) {
-    tgHint.textContent = "Telegram bot not configured on server";
-    tgHint.className = "tg-hint error";
-    return;
-  }
+function drawCTA(ctx, W, y) {
+  const label = "Generate yours free  →";
+  ctx.font = "700 34px 'Space Grotesk', sans-serif";
+  const tw = ctx.measureText(label).width;
+  const pad = 46;
+  const pw = tw + pad * 2;
+  const ph = 84;
+  const px = (W - pw) / 2;
+  ctx.save();
+  ctx.shadowColor = "rgba(34,197,94,.5)";
+  ctx.shadowBlur = 44;
+  roundRectPath(ctx, px, y, pw, ph, ph / 2);
+  const grad = ctx.createLinearGradient(px, 0, px + pw, 0);
+  grad.addColorStop(0, "#22c55e");
+  grad.addColorStop(1, "#10b981");
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = "#04120a";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, W / 2, y + ph / 2 + 2);
+  ctx.textBaseline = "alphabetic";
+}
 
-  // Strip .png extension for the deep-link payload
-  const imageId = lastFilename.replace(/\.png$/, "");
-  const deepLink = `https://t.me/${bot}?start=${imageId}`;
-  console.log("Deep link:", deepLink);
+// Load the web fonts before painting so canvas text isn't drawn in a fallback.
+async function ensureFonts() {
+  if (!document.fonts || !document.fonts.load) return;
+  try {
+    await Promise.all([
+      document.fonts.load("700 34px 'Space Grotesk'"),
+      document.fonts.load("700 50px 'Space Grotesk'"),
+      document.fonts.load("500 40px 'Inter'"),
+      document.fonts.load("600 20px 'Inter'"),
+      document.fonts.load("700 22px 'Inter'"),
+    ]);
+    await document.fonts.ready;
+  } catch { /* fall back to system fonts */ }
+}
 
-  qrCanvas.innerHTML = "";
+async function buildCombineCard() {
+  const W = 1080, H = 1400;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  paintBackground(ctx, W, H);
+  drawBrand(ctx, W);
 
-  if (typeof QRCode === "undefined") {
-    // Fallback: show clickable link if QR library failed to load
-    qrCanvas.innerHTML = `<a href="${deepLink}" target="_blank" style="color:#29a9ea;word-break:break-all">${deepLink}</a>`;
-  } else {
-    new QRCode(qrCanvas, {
-      text: deepLink,
-      width: 256,
-      height: 256,
-      correctLevel: QRCode.CorrectLevel.M,
+  const [imgA, imgB, imgR] = await Promise.all([
+    loadImage(previewA.src),
+    loadImage(previewB.src),
+    loadImage(resultImage.src),
+  ]);
+
+  // Parents row
+  const pS = 300, gap = 120;
+  const rowW = pS * 2 + gap;
+  const ax = (W - rowW) / 2;
+  const bx = ax + pS + gap;
+  const py = 172;
+  drawCover(ctx, imgA, ax, py, pS, pS, 28);
+  drawCover(ctx, imgB, bx, py, pS, pS, 28);
+  drawPillLabel(ctx, "Parent A", ax + pS / 2, py + pS + 12);
+  drawPillLabel(ctx, "Parent B", bx + pS / 2, py + pS + 12);
+
+  ctx.fillStyle = "#4ade80";
+  ctx.font = "700 70px 'Space Grotesk', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("+", W / 2, py + pS / 2);
+  ctx.textBaseline = "alphabetic";
+
+  // Result
+  const rS = 460;
+  const rx = (W - rS) / 2;
+  const ry = 588;
+  ctx.fillStyle = "rgba(255,255,255,.55)";
+  ctx.font = "700 40px 'Space Grotesk', sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("↓", W / 2, ry - 20);
+  drawCover(ctx, imgR, rx, ry, rS, rS, 36);
+  drawPillLabel(ctx, "👶 Their future kid", W / 2, ry + rS + 14);
+
+  drawHeadline(ctx, W, [
+    { text: "Want to see what", strong: false, gap: 60 },
+    { text: "YOUR future kid looks like?", strong: true, gap: 0 },
+  ], 1180);
+  drawCTA(ctx, W, 1258);
+
+  return canvas;
+}
+
+async function buildEffectsCard() {
+  const W = 1080, H = 1200;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  paintBackground(ctx, W, H);
+  drawBrand(ctx, W);
+
+  const [imgO, imgR] = await Promise.all([
+    loadImage(previewFx.src),
+    loadImage(resultImage.src),
+  ]);
+
+  // Before / after
+  const s = 420, gap = 64;
+  const rowW = s * 2 + gap;
+  const ax = (W - rowW) / 2;
+  const bx = ax + s + gap;
+  const y = 288;
+  drawPillLabel(ctx, "Before", ax + s / 2, y - 56);
+  drawPillLabel(ctx, "After", bx + s / 2, y - 56);
+  drawCover(ctx, imgO, ax, y, s, s, 32);
+  drawCover(ctx, imgR, bx, y, s, s, 32);
+
+  ctx.fillStyle = "#4ade80";
+  ctx.font = "700 66px 'Space Grotesk', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("→", W / 2, y + s / 2);
+  ctx.textBaseline = "alphabetic";
+
+  drawHeadline(ctx, W, [
+    { text: "Want your own", strong: false, gap: 60 },
+    { text: "AI transformation?", strong: true, gap: 0 },
+  ], 880);
+  drawCTA(ctx, W, 958);
+
+  return canvas;
+}
+
+function shareText() {
+  return lastTab === "effects"
+    ? "Check out my AI transformation ✨ Make your own at Cute Fusion Lab!"
+    : "This is what our future kid could look like 👶 Try it at Cute Fusion Lab!";
+}
+
+function setShareBusy(busy) {
+  shareNativeBtn.disabled = busy;
+  shareCopy.disabled = busy;
+  shareDownload.classList.toggle("disabled", busy);
+}
+
+async function openShareModal() {
+  if (!resultFrame.classList.contains("has-image")) return;
+  shareModal.classList.add("open");
+  sharePreview.classList.remove("ready");
+  shareHint.textContent = "";
+  shareHint.className = "share-hint";
+  shareImage.removeAttribute("src");
+  setShareBusy(true);
+
+  try {
+    await ensureFonts();
+    const canvas = lastTab === "effects" ? await buildEffectsCard() : await buildCombineCard();
+    const blob = await new Promise((resolve, reject) => {
+      // Throws SecurityError if the canvas is tainted (blocked CORS).
+      try { canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Empty canvas"))), "image/png"); }
+      catch (e) { reject(e); }
     });
-  }
 
-  qrBotName.textContent = `@${bot}`;
-  qrModal.classList.add("open");
+    if (shareObjectUrl) URL.revokeObjectURL(shareObjectUrl);
+    shareBlob = blob;
+    shareObjectUrl = URL.createObjectURL(blob);
+    shareImage.src = shareObjectUrl;
+    shareDownload.href = shareObjectUrl;
+    sharePreview.classList.add("ready");
+    setShareBusy(false);
+
+    // Hide the native Share button on platforms that can't share files.
+    const canNative = !!(navigator.canShare &&
+      navigator.canShare({ files: [new File([blob], "card.png", { type: "image/png" })] }));
+    shareNativeBtn.style.display = canNative ? "" : "none";
+  } catch (err) {
+    console.error("Share card failed:", err);
+    setShareBusy(false);
+    shareHint.textContent = "Couldn't build the card here — you can still download the plain result.";
+    shareHint.className = "share-hint error";
+  }
+}
+
+function closeShareModal() {
+  shareModal.classList.remove("open");
+}
+
+shareBtn.addEventListener("click", openShareModal);
+shareClose.addEventListener("click", closeShareModal);
+shareModal.addEventListener("click", (e) => { if (e.target === shareModal) closeShareModal(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && shareModal.classList.contains("open")) closeShareModal(); });
+
+shareNativeBtn.addEventListener("click", async () => {
+  if (!shareBlob) return;
+  const file = new File([shareBlob], "cute-fusion-lab.png", { type: "image/png" });
+  try {
+    await navigator.share({ files: [file], title: "Cute Fusion Lab", text: shareText() });
+  } catch { /* user dismissed the share sheet */ }
 });
 
-qrClose.addEventListener("click", () => qrModal.classList.remove("open"));
-qrModal.addEventListener("click", (e) => { if (e.target === qrModal) qrModal.classList.remove("open"); });
+shareCopy.addEventListener("click", async () => {
+  if (!shareBlob) return;
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": shareBlob })]);
+    shareHint.textContent = "Copied! Paste it into any chat or post.";
+    shareHint.className = "share-hint success";
+  } catch {
+    shareHint.textContent = "Copy isn't supported here — use Download instead.";
+    shareHint.className = "share-hint error";
+  }
+});
 
 renderEffects();
 updateButtons();

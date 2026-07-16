@@ -254,48 +254,76 @@ body{
 #resultImage{display:none;width:100%;border-radius:calc(var(--r-sm) - 1px)}
 .result-frame.has-image #resultImage{display:block}
 
-.result-btns{display:none;gap:12px;margin-top:16px;justify-content:center}
+.result-btns{display:none;gap:12px;margin-top:16px;justify-content:center;flex-wrap:wrap}
 .result-btns.visible{display:flex}
 
-/* ---- TELEGRAM QR ---- */
-.tg-send{display:none;margin-top:16px;text-align:center}
-.tg-send.visible{display:block}
-.btn-tg-qr{
+.btn-share{
   display:inline-flex;align-items:center;gap:8px;
-  width:auto;padding:12px 24px;font-size:.88rem;
-  background:linear-gradient(135deg,#29a9ea 0%,#0088cc 100%);
-  box-shadow:0 4px 16px rgba(41,169,234,.2);
+  width:auto;padding:12px 24px;font-size:.9rem;
+  background:var(--grad-green);box-shadow:0 4px 16px rgba(34,197,94,.22);
 }
-.btn-tg-qr:hover:not(:disabled){box-shadow:0 6px 24px rgba(41,169,234,.3)}
-.btn-tg-qr svg{flex-shrink:0}
-.tg-hint{font-size:.72rem;color:var(--text-muted);margin-top:6px;text-align:center;transition:color .3s}
-.tg-hint.success{color:var(--green)}
-.tg-hint.error{color:var(--red)}
+.btn-share:hover:not(:disabled){box-shadow:0 6px 24px rgba(34,197,94,.32)}
+.btn-share svg{flex-shrink:0}
 
-/* ---- QR MODAL ---- */
-.qr-modal{
+/* ---- SHARE MODAL ---- */
+.share-modal{
   display:none;position:fixed;inset:0;z-index:9999;
-  background:rgba(0,0,0,.7);backdrop-filter:blur(8px);
-  place-items:center;
+  background:rgba(0,0,0,0);backdrop-filter:blur(0);
+  place-items:center;padding:20px;overflow-y:auto;
+  transition:background .4s ease,backdrop-filter .4s ease;
 }
-.qr-modal.open{display:grid}
-.qr-modal-content{
-  background:#111;border:1px solid var(--border);border-radius:16px;
-  padding:32px;text-align:center;position:relative;
-  max-width:360px;width:90%;box-shadow:var(--shadow);
+.share-modal.open{display:grid;background:rgba(0,0,0,.65);backdrop-filter:blur(12px)}
+.share-card{
+  position:relative;width:min(440px,94vw);
+  background:rgba(14,14,14,.96);border:1px solid var(--border);
+  border-radius:20px;padding:28px 26px 24px;text-align:center;
+  box-shadow:0 24px 64px rgba(0,0,0,.55);
+  transform:translateY(18px) scale(.96);opacity:0;
+  transition:transform .5s cubic-bezier(.16,1,.3,1),opacity .5s cubic-bezier(.16,1,.3,1);
 }
-.qr-modal-content h2{font-size:1.1rem;margin:0 0 8px;color:var(--text)}
-.qr-instructions{font-size:.82rem;color:var(--text-dim);margin:0 0 20px}
-.qr-canvas{display:flex;justify-content:center;margin:0 auto 16px}
-.qr-canvas canvas{border-radius:8px}
-.qr-bot-name{font-size:.82rem;color:#29a9ea;margin:0}
-.qr-close{
-  position:absolute;top:12px;right:12px;
+.share-modal.open .share-card{transform:translateY(0) scale(1);opacity:1}
+.share-heading{
+  font-family:"Space Grotesk",sans-serif;font-size:1.35rem;font-weight:700;
+  background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.share-subtitle{font-size:.85rem;color:var(--text-dim);margin:6px 0 18px}
+
+.share-preview{
+  position:relative;border-radius:var(--r-sm);overflow:hidden;
+  background:rgba(0,0,0,.35);border:1px solid var(--border);
+  min-height:220px;display:grid;place-items:center;margin-bottom:18px;
+}
+.share-building{display:flex;flex-direction:column;align-items:center;gap:10px;color:var(--text-dim);font-size:.85rem;padding:40px}
+.share-preview.ready .share-building{display:none}
+#shareImage{display:none;width:100%;border-radius:calc(var(--r-sm) - 1px)}
+.share-preview.ready #shareImage{display:block}
+
+.share-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.btn-share-primary{
+  display:inline-flex;align-items:center;gap:8px;width:auto;
+  padding:13px 24px;font-size:.92rem;background:var(--grad-green);
+  box-shadow:0 4px 16px rgba(34,197,94,.22);
+}
+.btn-share-primary:hover:not(:disabled){box-shadow:0 6px 24px rgba(34,197,94,.32)}
+.btn-share-primary svg{flex-shrink:0}
+.btn-share-secondary{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:auto;padding:13px 22px;font-size:.9rem;text-decoration:none;
+  background:var(--surface);border:1px solid var(--border);color:var(--text);
+}
+.btn-share-secondary:hover:not(.disabled){background:var(--surface-h);border-color:var(--border-h)}
+.btn-share-secondary.disabled{opacity:.45;pointer-events:none}
+
+.share-hint{min-height:1rem;font-size:.76rem;color:var(--text-muted);margin-top:12px;transition:color .3s}
+.share-hint.success{color:var(--green)}
+.share-hint.error{color:var(--red)}
+
+.share-close{
+  position:absolute;top:12px;right:14px;
   background:none;border:none;color:var(--text-dim);
-  font-size:1.4rem;cursor:pointer;padding:4px 8px;
-  line-height:1;
+  font-size:1.5rem;cursor:pointer;padding:2px 8px;line-height:1;transition:color .2s;
 }
-.qr-close:hover{color:var(--text)}
+.share-close:hover{color:var(--text)}
 
 /* ---- RATE LIMIT CTA MODAL ---- */
 .rl-overlay{
@@ -378,6 +406,8 @@ body{
   .options-grid{grid-template-columns:1fr}
   .options-row{flex-direction:column;gap:12px}
   .result-btns.visible{flex-direction:column}
-  .btn-download,.btn-regen{width:100%}
+  .btn-download,.btn-regen,.btn-share{width:100%;justify-content:center}
+  .share-actions{flex-direction:column}
+  .btn-share-primary,.btn-share-secondary{width:100%}
   .tab-btn{padding:12px 10px;font-size:.9rem}
 }
